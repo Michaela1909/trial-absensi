@@ -1,0 +1,69 @@
+<?php
+session_start();
+require_once("../../helper/dbHelper.php");
+require_once("../../helper/authHelper.php");
+$permittedRole = ["lecturer", "admin"];
+$pageName = "Sistem Absensi UPH - Data Mahasiswa";
+$data = [];
+if (!authorization($permittedRole, $_SESSION["UserId"])) {
+    header('location: ../auth/logout.php');
+}
+
+dataCourseView();
+
+function dataCourseView()
+{
+    global $data;
+    $userId = $_SESSION["UserId"];
+    $connection = getConnection();
+
+    // Check user role
+    $userRole = getUserRole($userId);
+
+    if ($userRole === "admin") {
+        // If user is an admin, retrieve all courses
+        try {
+            $stmt = $connection->prepare("
+                SELECT courses.CourseId, courses.Name, courses.Code, courses.StartDate, 
+                       courses.EndDate, CONCAT(buildings.Letter, classrooms.Code) AS Room, 
+                       courses.Status AS CoursesStatus
+                FROM courses
+                INNER JOIN classrooms ON courses.ClassroomId = classrooms.ClassroomId
+                INNER JOIN buildings ON classrooms.BuildingId = buildings.BuildingId
+            ");
+            $stmt->execute();
+            $courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Populate data array with course information
+            $data['courses'] = $courses;
+        } catch (Exception $e) {
+            $_SESSION["error"] = $e->getMessage();
+            header("location: dataStudent.php");
+            exit;
+        }
+    } elseif ($userRole === "lecturer") {
+        // If user is a lecturer, retrieve courses taught by the lecturer
+        try {
+            $stmt = $connection->prepare("
+                SELECT courses.CourseId, courses.Name, courses.Code, courses.StartDate, 
+                       courses.EndDate, CONCAT(buildings.Letter, classrooms.Code) AS Room, 
+                       courses.Status AS CoursesStatus
+                FROM courses
+                INNER JOIN classrooms ON courses.ClassroomId = classrooms.ClassroomId
+                INNER JOIN buildings ON classrooms.BuildingId = buildings.BuildingId
+                INNER JOIN lecturerhascourses ON courses.CourseId = lecturerhascourses.CourseId
+                WHERE lecturerhascourses.LecturerId = ?
+            ");
+            $stmt->execute([$userId]);
+            $courses = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Populate data array with course information
+            $data['courses'] = $courses;
+        } catch (Exception $e) {
+            $_SESSION["error"] = $e->getMessage();
+            header("location: dataStudent.php");
+            exit;
+        }
+    } 
+}
+?>
